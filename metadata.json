@@ -1,5 +1,7 @@
 {
   "name": "Copy of NEST – Family Travel OS",
   "description": "A premium, dark-themed family travel planner with AI integration.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "geolocation"
+  ]
 }

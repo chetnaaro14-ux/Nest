@@ -1,3 +1,4 @@
+
 export interface Profile {
   id: string;
   email: string;
@@ -66,4 +67,14 @@ export interface GeneratedActivitySuggestion {
   approximate_end_time: string;
   cost: number;
   notes: string;
+}
+
+// Global interface for Veo API Key Selection
+declare global {
+  // Augment the existing AIStudio interface. 
+  // We assume Window.aistudio is already defined as AIStudio.
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
 }
