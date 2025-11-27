@@ -9,12 +9,42 @@ interface ActivityListProps {
   onOpenComments: (activity: Activity) => void;
 }
 
-const categoryConfig: Record<string, { bg: string, text: string, icon: React.FC<any>, gradient: string }> = {
-  food: { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: Utensils, gradient: 'from-orange-900 to-slate-900' },
-  sightseeing: { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: Camera, gradient: 'from-blue-900 to-slate-900' },
-  rest: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', icon: BedDouble, gradient: 'from-emerald-900 to-slate-900' },
-  travel: { bg: 'bg-purple-500/20', text: 'text-purple-400', icon: Plane, gradient: 'from-purple-900 to-slate-900' },
-  kids: { bg: 'bg-pink-500/20', text: 'text-pink-400', icon: Smile, gradient: 'from-pink-900 to-slate-900' },
+const categoryConfig: Record<string, { bg: string, text: string, icon: React.FC<any>, gradient: string, fallbackImage: string }> = {
+  food: { 
+    bg: 'bg-orange-500/20', 
+    text: 'text-orange-400', 
+    icon: Utensils, 
+    gradient: 'from-orange-900 to-slate-900',
+    fallbackImage: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=800&q=60' // Dark food
+  },
+  sightseeing: { 
+    bg: 'bg-blue-500/20', 
+    text: 'text-blue-400', 
+    icon: Camera, 
+    gradient: 'from-blue-900 to-slate-900',
+    fallbackImage: 'https://images.unsplash.com/photo-1476514525535-07fb3b4ae5f1?auto=format&fit=crop&w=800&q=60' // Nature/Landscape
+  },
+  rest: { 
+    bg: 'bg-emerald-500/20', 
+    text: 'text-emerald-400', 
+    icon: BedDouble, 
+    gradient: 'from-emerald-900 to-slate-900',
+    fallbackImage: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=800&q=60' // Cozy room
+  },
+  travel: { 
+    bg: 'bg-purple-500/20', 
+    text: 'text-purple-400', 
+    icon: Plane, 
+    gradient: 'from-purple-900 to-slate-900',
+    fallbackImage: 'https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=800&q=60' // Airplane wing
+  },
+  kids: { 
+    bg: 'bg-pink-500/20', 
+    text: 'text-pink-400', 
+    icon: Smile, 
+    gradient: 'from-pink-900 to-slate-900',
+    fallbackImage: 'https://images.unsplash.com/photo-1502086223501-681a9134277b?auto=format&fit=crop&w=800&q=60' // Fun/Balloons
+  },
 };
 
 const ActivityList: React.FC<ActivityListProps> = ({ activities, onDelete, onOpenComments }) => {
@@ -65,16 +95,21 @@ const ActivityList: React.FC<ActivityListProps> = ({ activities, onDelete, onOpe
                        className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover/card:scale-110" 
                        style={{ backgroundImage: `url(${activity.image_url})` }} 
                      />
+                   ) : activity.image_prompt ? (
+                     // If generating, show gradient + spinner
+                     <div className={`absolute inset-0 bg-gradient-to-br ${config.gradient} opacity-80 flex items-center justify-center`}>
+                        <div className="text-center px-4">
+                          <div className="inline-block animate-spin mb-2 w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
+                          <p className="text-[10px] text-white/70 uppercase tracking-widest font-bold">Generating Visual...</p>
+                        </div>
+                     </div>
                    ) : (
-                     <div className={`absolute inset-0 bg-gradient-to-br ${config.gradient} opacity-50 flex items-center justify-center`}>
-                        {activity.image_prompt ? (
-                          <div className="text-center px-4">
-                            <div className="inline-block animate-spin mb-2 w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
-                            <p className="text-[10px] text-white/70 uppercase tracking-widest font-bold">Generating Visual...</p>
-                          </div>
-                        ) : (
-                          <Icon className="h-12 w-12 text-white/20" />
-                        )}
+                     // Fallback static image if no generation planned
+                     <div 
+                       className="absolute inset-0 bg-cover bg-center opacity-80 transition-transform duration-700 group-hover/card:scale-110"
+                       style={{ backgroundImage: `url(${config.fallbackImage})` }}
+                     >
+                       <div className="absolute inset-0 bg-indigo-900/30 mix-blend-multiply"></div>
                      </div>
                    )}
                    

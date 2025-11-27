@@ -200,36 +200,50 @@ const MediaStudio: React.FC = () => {
         </div>
 
         {/* Results Column */}
-        <div className="bg-slate-950/50 rounded-2xl border border-slate-800 p-6 flex flex-col items-center justify-center min-h-[300px]">
-          {loading ? (
-             <div className="text-center">
-               <Loader2 className="animate-spin h-10 w-10 text-indigo-500 mx-auto mb-4" />
-               <p className="text-slate-400 animate-pulse">Creating magic...</p>
-               {activeTab === 'video' && <p className="text-xs text-slate-500 mt-2">Video generation takes longer.</p>}
-             </div>
-          ) : resultUrl ? (
-             <div className="relative group w-full h-full flex items-center justify-center">
-                {activeTab === 'video' ? (
-                  <video src={resultUrl} controls className="max-w-full max-h-[400px] rounded-lg shadow-2xl" />
-                ) : (
-                  <img src={resultUrl} alt="Result" className="max-w-full max-h-[400px] object-contain rounded-lg shadow-2xl" />
-                )}
-                <a href={resultUrl} download={`nest-${activeTab}-${Date.now()}.${activeTab === 'video' ? 'mp4' : 'png'}`} 
-                   className="absolute bottom-4 right-4 bg-white text-slate-900 p-3 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                   <Download className="h-5 w-5" />
-                </a>
-             </div>
-          ) : analysisText ? (
-            <div className="text-left w-full h-full overflow-y-auto">
-              <h4 className="text-indigo-400 font-bold mb-2 flex items-center"><Eye className="h-4 w-4 mr-2" /> Analysis Result</h4>
-              <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{analysisText}</p>
-            </div>
-          ) : (
-             <div className="text-center text-slate-600">
-               <Wand2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
-               <p>Your creation will appear here.</p>
-             </div>
+        <div 
+          className="bg-slate-950/50 rounded-2xl border border-slate-800 p-6 flex flex-col items-center justify-center min-h-[300px] relative overflow-hidden"
+          style={(!resultUrl && !analysisText && !loading) ? {
+             backgroundImage: 'url("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=60")',
+             backgroundSize: 'cover',
+             backgroundPosition: 'center'
+          } : undefined}
+        >
+          {(!resultUrl && !analysisText && !loading) && (
+             <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"></div>
           )}
+
+          <div className="relative z-10 w-full h-full flex items-center justify-center">
+            {loading ? (
+               <div className="text-center">
+                 <Loader2 className="animate-spin h-10 w-10 text-indigo-500 mx-auto mb-4" />
+                 <p className="text-slate-400 animate-pulse">Creating magic...</p>
+                 {activeTab === 'video' && <p className="text-xs text-slate-500 mt-2">Video generation takes longer.</p>}
+               </div>
+            ) : resultUrl ? (
+               <div className="relative group w-full h-full flex items-center justify-center">
+                  {activeTab === 'video' ? (
+                    <video src={resultUrl} controls className="max-w-full max-h-[400px] rounded-lg shadow-2xl" />
+                  ) : (
+                    <img src={resultUrl} alt="Result" className="max-w-full max-h-[400px] object-contain rounded-lg shadow-2xl" />
+                  )}
+                  <a href={resultUrl} download={`nest-${activeTab}-${Date.now()}.${activeTab === 'video' ? 'mp4' : 'png'}`} 
+                     className="absolute bottom-4 right-4 bg-white text-slate-900 p-3 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                     <Download className="h-5 w-5" />
+                  </a>
+               </div>
+            ) : analysisText ? (
+              <div className="text-left w-full h-full overflow-y-auto">
+                <h4 className="text-indigo-400 font-bold mb-2 flex items-center"><Eye className="h-4 w-4 mr-2" /> Analysis Result</h4>
+                <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{analysisText}</p>
+              </div>
+            ) : (
+               <div className="text-center text-slate-300">
+                 <Wand2 className="h-12 w-12 mx-auto mb-3 text-indigo-400" />
+                 <p className="font-bold">Your creation will appear here.</p>
+                 <p className="text-xs text-slate-400 mt-1">Use prompts to generate or edit media.</p>
+               </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

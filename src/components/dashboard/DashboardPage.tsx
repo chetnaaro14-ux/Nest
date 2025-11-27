@@ -186,22 +186,32 @@ const DashboardPage: React.FC = () => {
            <p className="text-slate-500 text-sm">Loading your adventures...</p>
         </div>
       ) : trips.length === 0 ? (
-        <div className="glass-panel p-16 rounded-3xl text-center border-dashed border-2 border-slate-700/50 flex flex-col items-center">
-           <div className="w-32 h-32 bg-slate-900 rounded-full flex items-center justify-center mb-8 border border-white/5 relative overflow-hidden group">
-             <div className="absolute inset-0 bg-indigo-500/20 blur-xl group-hover:bg-indigo-500/30 transition-colors"></div>
-             <Compass className="h-12 w-12 text-indigo-400 relative z-10" />
+        <div 
+          className="glass-panel p-16 rounded-3xl text-center border-dashed border-2 border-slate-700/50 flex flex-col items-center relative overflow-hidden"
+          style={{
+            backgroundImage: 'url("https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?auto=format&fit=crop&w=2000&q=80")',
+            backgroundSize: 'cover',
+            backgroundPosition: 'center'
+          }}
+        >
+           <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"></div>
+           <div className="relative z-10 flex flex-col items-center">
+             <div className="w-32 h-32 bg-slate-900/50 rounded-full flex items-center justify-center mb-8 border border-white/10 relative overflow-hidden group backdrop-blur-md">
+               <div className="absolute inset-0 bg-indigo-500/20 blur-xl group-hover:bg-indigo-500/30 transition-colors"></div>
+               <Compass className="h-12 w-12 text-indigo-400 relative z-10" />
+             </div>
+             <h3 className="text-3xl font-bold text-white mb-3">No trips planned yet</h3>
+             <p className="text-slate-300 mb-10 max-w-md mx-auto leading-relaxed">
+               Your next great adventure is just a click away. Let our AI architect design the perfect itinerary for you.
+             </p>
+             <button 
+               onClick={() => { setShowWizard(true); setMode('ai'); }}
+               className="bg-white text-slate-900 hover:bg-indigo-50 px-8 py-4 rounded-xl font-bold transition-all hover:-translate-y-1 shadow-xl flex items-center"
+             >
+               <Sparkles className="h-4 w-4 mr-2 text-indigo-600" />
+               Start Planning with AI
+             </button>
            </div>
-           <h3 className="text-3xl font-bold text-white mb-3">No trips planned yet</h3>
-           <p className="text-slate-400 mb-10 max-w-md mx-auto leading-relaxed">
-             Your next great adventure is just a click away. Let our AI architect design the perfect itinerary for you.
-           </p>
-           <button 
-             onClick={() => { setShowWizard(true); setMode('ai'); }}
-             className="bg-white text-slate-900 hover:bg-indigo-50 px-8 py-4 rounded-xl font-bold transition-all hover:-translate-y-1 shadow-xl flex items-center"
-           >
-             <Sparkles className="h-4 w-4 mr-2 text-indigo-600" />
-             Start Planning with AI
-           </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -255,12 +265,23 @@ const DashboardPage: React.FC = () => {
           {/* Add New Card */}
           <button 
              onClick={() => { setShowWizard(true); setMode('ai'); }}
-             className="rounded-3xl border-2 border-dashed border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all flex flex-col items-center justify-center min-h-[400px] group"
+             className="rounded-3xl border-2 border-dashed border-slate-800 hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all flex flex-col items-center justify-center min-h-[400px] group relative overflow-hidden"
           >
-             <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-lg border border-white/5">
-                <Plus className="h-8 w-8 text-slate-500 group-hover:text-indigo-400" />
+             {/* Subtle texture for create card */}
+             <div 
+               className="absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity duration-500"
+               style={{ 
+                 backgroundImage: 'url("https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1000&q=80")', 
+                 backgroundSize: 'cover' 
+               }} 
+             />
+             
+             <div className="relative z-10 flex flex-col items-center">
+               <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-lg border border-white/5">
+                  <Plus className="h-8 w-8 text-slate-500 group-hover:text-indigo-400" />
+               </div>
+               <span className="text-slate-400 font-bold group-hover:text-indigo-300">Create New Trip</span>
              </div>
-             <span className="text-slate-400 font-bold group-hover:text-indigo-300">Create New Trip</span>
           </button>
         </div>
       )}
