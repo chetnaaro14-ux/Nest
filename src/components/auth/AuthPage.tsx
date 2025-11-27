@@ -33,7 +33,11 @@ const AuthPage: React.FC = () => {
         if (signUpError) throw signUpError;
 
         if (data.user) {
-          await supabase.from('profiles').insert([{ id: data.user.id, email: data.user.email }]);
+          // Attempt to insert profile, but if it fails (already exists), just ignore it.
+          const { error: profileError } = await supabase.from('profiles').insert([{ id: data.user.id, email: data.user.email }]);
+          if (profileError && !profileError.message.includes('duplicate key')) {
+             console.warn("Profile creation warning:", profileError);
+          }
           navigate('/app');
         }
       } else if (mode === 'signin') {

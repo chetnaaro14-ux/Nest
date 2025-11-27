@@ -32,14 +32,29 @@ const DashboardPage: React.FC = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
-    const { data: memberData } = await supabase.from('trip_members').select('trip_id').eq('user_id', user.id);
-    const tripIds = memberData?.map(m => m.trip_id) || [];
-    
-    if (tripIds.length > 0) {
-      const { data: tripsData } = await supabase.from('trips').select('*').in('id', tripIds).order('start_date', { ascending: true });
-      if (tripsData) setTrips(tripsData as Trip[]);
-    } else {
+    // Safety check: if trip_members table doesn't exist yet, this might fail silently or throw.
+    // We try/catch to be safe.
+    try {
+      const { data: memberData, error } = await supabase.from('trip_members').select('trip_id').eq('user_id', user.id);
+      
+      if (error) {
+        console.warn("Could not fetch trips. DB might be empty.", error);
         setTrips([]);
+        setLoading(false);
+        return;
+      }
+
+      const tripIds = memberData?.map(m => m.trip_id) || [];
+      
+      if (tripIds.length > 0) {
+        const { data: tripsData } = await supabase.from('trips').select('*').in('id', tripIds).order('start_date', { ascending: true });
+        if (tripsData) setTrips(tripsData as Trip[]);
+      } else {
+          setTrips([]);
+      }
+    } catch (e) {
+      console.error(e);
+      setTrips([]);
     }
     setLoading(false);
   };
@@ -53,7 +68,7 @@ const DashboardPage: React.FC = () => {
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("No user");
+      if (!user) throw new Error("You must be signed in to create a trip.");
 
       // 1. Handle Cover Image
       let coverImageUrl = null;
@@ -62,9 +77,15 @@ const DashboardPage: React.FC = () => {
          const fileExt = coverFile.name.split('.').pop();
          const fileName = `${Math.random()}.${fileExt}`;
          const filePath = `${user.id}/${fileName}`;
-         await supabase.storage.from('trip-covers').upload(filePath, coverFile);
-         const { data: { publicUrl } } = supabase.storage.from('trip-covers').getPublicUrl(filePath);
-         coverImageUrl = publicUrl;
+         
+         // Check if bucket exists implicitly by trying upload
+         const { error: uploadError } = await supabase.storage.from('trip-covers').upload(filePath, coverFile);
+         if (uploadError) {
+           console.warn("Upload failed (Bucket might not exist):", uploadError.message);
+         } else {
+           const { data: { publicUrl } } = supabase.storage.from('trip-covers').getPublicUrl(filePath);
+           coverImageUrl = publicUrl;
+         }
       } else if (mode === 'ai') {
          // Try to generate a cover if none provided
          setStatusMsg('Generating trip cover...');
@@ -99,24 +120,37 @@ const DashboardPage: React.FC = () => {
         cover_image: coverImageUrl
       }]).select().single();
 
-      if (tripError) throw tripError;
+      if (tripError) throw new Error(`DB Error (Trips): ${tripError.message}`);
+      
       const trip = tripData as Trip;
-      await supabase.from('trip_members').insert([{ trip_id: trip.id, user_id: user.id, role: 'owner' }]);
+      
+      // Insert Member
+      const { error: memberError } = await supabase.from('trip_members').insert([{ trip_id: trip.id, user_id: user.id, role: 'owner' }]);
+      if (memberError) throw new Error(`DB Error (Members): ${memberError.message}`);
 
       // 4. Generate Days
       const start = new Date(startDate);
       const end = new Date(endDate);
       const daysToInsert = [];
       let currentIndex = 0;
+      // Safety cap of 30 days to prevent infinite loops on bad dates
+      const MAX_DAYS = 30;
+      let dayCount = 0;
+
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        if (dayCount++ > MAX_DAYS) break;
         daysToInsert.push({ 
             trip_id: trip.id, 
             date: d.toISOString().split('T')[0], 
             index: currentIndex++,
-            id: crypto.randomUUID() // Pre-generate ID for references
+            id: crypto.randomUUID() 
         });
       }
-      if (daysToInsert.length > 0) await supabase.from('days').insert(daysToInsert);
+      
+      if (daysToInsert.length > 0) {
+        const { error: daysError } = await supabase.from('days').insert(daysToInsert);
+        if (daysError) throw new Error(`DB Error (Days): ${daysError.message}`);
+      }
 
       // 5. AI Itinerary Generation
       if (mode === 'ai') {
@@ -139,18 +173,19 @@ const DashboardPage: React.FC = () => {
                 cost: s.cost, 
                 notes: s.notes, 
                 logistics: s.logistics, 
-                image_prompt: s.image_prompt, // Save the prompt!
-                image_url: null // Will be generated on view
+                image_prompt: s.image_prompt, 
+                image_url: null 
             }));
-            await supabase.from('activities').insert(activitiesToInsert);
+            const { error: actError } = await supabase.from('activities').insert(activitiesToInsert);
+            if (actError) throw new Error(`DB Error (Activities): ${actError.message}`);
         }
       }
 
       setShowWizard(false);
       navigate(`/app/trips/${trip.id}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Failed to create trip. Please try again.");
+      alert(`Failed to create trip: ${err.message || err}`);
     } finally {
       setProcessing(false);
     }
