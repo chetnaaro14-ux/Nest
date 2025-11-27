@@ -85,7 +85,13 @@ const MediaStudio: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      alert(err.message || "Operation failed");
+      // Robust error message extraction
+      let msg = "Operation failed";
+      if (typeof err === 'string') msg = err;
+      else if (err?.message) msg = err.message;
+      else if (err && typeof err === 'object') msg = JSON.stringify(err);
+      
+      alert(msg);
     } finally {
       setLoading(false);
     }

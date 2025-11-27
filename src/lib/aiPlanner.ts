@@ -69,7 +69,23 @@ export async function generateAiActivitiesForTrip(params: {
     // Sanitize the output to remove Markdown code blocks if present
     text = text.replace(/```json/g, '').replace(/```/g, '').trim();
     
-    const suggestions = JSON.parse(text) as GeneratedActivitySuggestion[];
+    const rawSuggestions = JSON.parse(text);
+
+    // Strict sanitation to prevent [object Object] errors in UI
+    const suggestions: GeneratedActivitySuggestion[] = Array.isArray(rawSuggestions) 
+      ? rawSuggestions.map((s: any) => ({
+          title: String(s.title || 'Untitled Activity'),
+          category: s.category || 'sightseeing',
+          approximate_start_time: String(s.approximate_start_time || ''),
+          approximate_end_time: String(s.approximate_end_time || ''),
+          cost: Number(s.cost) || 0,
+          // Handle cases where AI returns an object instead of a string
+          notes: typeof s.notes === 'object' ? JSON.stringify(s.notes) : String(s.notes || ''),
+          logistics: typeof s.logistics === 'object' ? JSON.stringify(s.logistics) : String(s.logistics || ''),
+          image_prompt: typeof s.image_prompt === 'object' ? JSON.stringify(s.image_prompt) : String(s.image_prompt || '')
+        }))
+      : [];
+
     return suggestions;
   } catch (error) {
     console.error("Gemini AI generation failed:", error);
