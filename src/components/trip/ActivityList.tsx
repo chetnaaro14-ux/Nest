@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { Activity } from '../../types';
-import { Clock, DollarSign, MessageSquare, Trash2, MapPin } from 'lucide-react';
+import { Clock, Trash2, MapPin, ChevronRight, Ticket, Utensils, Camera, BedDouble, Plane, Smile } from 'lucide-react';
 
 interface ActivityListProps {
   activities: Activity[];
@@ -8,69 +9,117 @@ interface ActivityListProps {
   onOpenComments: (activity: Activity) => void;
 }
 
-const categoryStyles: Record<string, { bg: string, text: string, border: string }> = {
-  food: { bg: 'bg-orange-500/10', text: 'text-orange-400', border: 'border-orange-500/20' },
-  sightseeing: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20' },
-  rest: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' },
-  travel: { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' },
-  kids: { bg: 'bg-pink-500/10', text: 'text-pink-400', border: 'border-pink-500/20' },
+const categoryConfig: Record<string, { bg: string, text: string, icon: React.FC<any>, gradient: string }> = {
+  food: { bg: 'bg-orange-500/20', text: 'text-orange-400', icon: Utensils, gradient: 'from-orange-900 to-slate-900' },
+  sightseeing: { bg: 'bg-blue-500/20', text: 'text-blue-400', icon: Camera, gradient: 'from-blue-900 to-slate-900' },
+  rest: { bg: 'bg-emerald-500/20', text: 'text-emerald-400', icon: BedDouble, gradient: 'from-emerald-900 to-slate-900' },
+  travel: { bg: 'bg-purple-500/20', text: 'text-purple-400', icon: Plane, gradient: 'from-purple-900 to-slate-900' },
+  kids: { bg: 'bg-pink-500/20', text: 'text-pink-400', icon: Smile, gradient: 'from-pink-900 to-slate-900' },
 };
 
 const ActivityList: React.FC<ActivityListProps> = ({ activities, onDelete, onOpenComments }) => {
   if (activities.length === 0) {
     return (
-      <div className="text-center py-16 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-900/20">
-        <div className="w-12 h-12 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
-            <MapPin className="h-6 w-6 text-slate-600" />
+      <div className="flex flex-col items-center justify-center py-24 bg-slate-900/30 rounded-3xl border-2 border-dashed border-slate-800/50">
+        <div className="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mb-6">
+            <MapPin className="h-10 w-10 text-slate-600" />
         </div>
-        <p className="text-slate-400 font-medium">No plans for this day yet.</p>
-        <p className="text-slate-600 text-sm mt-1">Use the form below or AI to add activities.</p>
+        <p className="text-slate-300 font-bold text-xl mb-2">It's quiet here...</p>
+        <p className="text-slate-500 text-sm max-w-xs text-center">Add an activity manually or switch to the AI Assistant tab to generate ideas.</p>
       </div>
     );
   }
 
   return (
-    <div className="relative space-y-6 before:absolute before:left-24 before:top-4 before:bottom-4 before:w-px before:bg-slate-800/50 hidden md:block">
-       {/* Mobile/Simple View Fallback handled via CSS classes or keep simple structure for responsive */}
+    <div className="relative space-y-8">
+      {/* Vertical Line */}
+      <div className="absolute left-[28px] md:left-[120px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-indigo-500 via-purple-500 to-slate-800 opacity-20"></div>
+      
       {activities.map((activity) => {
-        const style = categoryStyles[activity.category] || { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-700' };
+        const config = categoryConfig[activity.category] || categoryConfig['sightseeing'];
+        const Icon = config.icon;
         
         return (
-          <div key={activity.id} className="relative flex group">
-            {/* Time Column */}
-            <div className="w-24 flex-shrink-0 flex flex-col items-end pr-6 pt-1">
-              <span className="text-sm font-bold text-slate-200">{activity.start_time ? activity.start_time.slice(0, 5) : '--:--'}</span>
-              <span className="text-xs text-slate-500">{activity.end_time ? activity.end_time.slice(0, 5) : ''}</span>
+          <div key={activity.id} className="relative flex group items-start">
+            
+            {/* Time Column (Desktop) */}
+            <div className="w-28 flex-shrink-0 hidden md:flex flex-col items-end pr-8 pt-6">
+              <span className="text-xl font-bold text-slate-200 font-mono tracking-tight">{activity.start_time ? activity.start_time.slice(0, 5) : '--:--'}</span>
+              <span className="text-xs text-slate-500 font-medium mt-1">{activity.end_time ? activity.end_time.slice(0, 5) : ''}</span>
             </div>
 
             {/* Timeline Dot */}
-            <div className={`absolute left-[5.75rem] top-2 w-3 h-3 rounded-full border-2 border-slate-950 ${style.text.replace('text-', 'bg-')} z-10 shadow-[0_0_10px_rgba(0,0,0,0.5)]`}></div>
+            <div className={`absolute left-[19px] md:left-[111px] top-8 w-5 h-5 rounded-full border-4 border-slate-950 ${config.bg.replace('/20', '')} z-10 shadow-[0_0_15px_rgba(99,102,241,0.4)]`}></div>
 
             {/* Card */}
-            <div className="flex-1 glass-card border border-white/5 rounded-2xl p-5 hover:border-slate-600/50 transition-all hover:bg-slate-800/30">
-              <div className="flex justify-between items-start mb-2">
-                 <div className="flex items-center gap-3">
-                    <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${style.bg} ${style.text} ${style.border}`}>
-                      {activity.category}
-                    </span>
-                 </div>
-                 <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => onOpenComments(activity)} className="p-2 text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors">
-                      <MessageSquare className="h-4 w-4" />
-                    </button>
-                    <button onClick={() => onDelete(activity.id)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                 </div>
-              </div>
+            <div 
+              onClick={() => onOpenComments(activity)}
+              className="flex-1 ml-10 md:ml-0 glass-card border border-white/5 rounded-3xl overflow-hidden hover:border-indigo-500/40 transition-all hover:bg-slate-800/60 cursor-pointer group/card shadow-lg hover:shadow-2xl hover:shadow-indigo-500/10 hover:-translate-y-1"
+            >
+              <div className="flex flex-col md:flex-row">
+                
+                {/* Large Image Section */}
+                <div className="h-48 md:h-auto md:w-1/3 bg-slate-900 relative overflow-hidden">
+                   {activity.image_url ? (
+                     <div 
+                       className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover/card:scale-110" 
+                       style={{ backgroundImage: `url(${activity.image_url})` }} 
+                     />
+                   ) : (
+                     <div className={`absolute inset-0 bg-gradient-to-br ${config.gradient} opacity-50 flex items-center justify-center`}>
+                        {activity.image_prompt ? (
+                          <div className="text-center px-4">
+                            <div className="inline-block animate-spin mb-2 w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></div>
+                            <p className="text-[10px] text-white/70 uppercase tracking-widest font-bold">Generating Visual...</p>
+                          </div>
+                        ) : (
+                          <Icon className="h-12 w-12 text-white/20" />
+                        )}
+                     </div>
+                   )}
+                   
+                   {/* Mobile Time Overlay */}
+                   <div className="md:hidden absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-lg text-white font-mono text-xs font-bold border border-white/10">
+                      {activity.start_time?.slice(0,5) || 'Time TBD'}
+                   </div>
+                </div>
 
-              <h4 className="text-lg font-bold text-slate-100 mb-1">{activity.title}</h4>
-              {activity.notes && <p className="text-slate-400 text-sm mb-3 leading-relaxed">{activity.notes}</p>}
+                {/* Content Section */}
+                <div className="p-6 md:p-8 flex-1 flex flex-col justify-center">
+                  <div className="flex justify-between items-start mb-2">
+                     <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${config.bg} ${config.text}`}>
+                        <Icon className="h-3 w-3 mr-1.5" />
+                        {activity.category}
+                     </span>
+                     
+                     <button 
+                        onClick={(e) => { e.stopPropagation(); onDelete(activity.id); }} 
+                        className="opacity-0 group-hover/card:opacity-100 p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                  </div>
 
-              <div className="flex items-center pt-3 border-t border-white/5">
-                <div className="flex items-center text-slate-300 font-mono text-sm">
-                   <DollarSign className="h-3.5 w-3.5 mr-1 text-emerald-400" />
-                   {activity.cost}
+                  <h4 className="text-2xl font-bold text-slate-100 mb-3 leading-tight group-hover/card:text-indigo-300 transition-colors">{activity.title}</h4>
+                  
+                  {activity.logistics && (
+                    <div className="mb-4 flex items-center text-xs text-indigo-300 font-bold bg-indigo-500/10 p-2.5 rounded-lg border border-indigo-500/10 w-fit">
+                       <Ticket className="h-3.5 w-3.5 mr-2" />
+                       {activity.logistics}
+                    </div>
+                  )}
+
+                  <p className="text-slate-400 text-sm line-clamp-2 mb-4">{activity.notes || "No details provided."}</p>
+                  
+                  <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-auto">
+                     <div className="flex items-center text-emerald-400 font-mono text-sm font-bold bg-emerald-500/10 px-3 py-1 rounded-full">
+                        <span className="mr-1">₹</span>
+                        {activity.cost}
+                     </div>
+                     <div className="flex items-center text-xs text-white font-bold uppercase tracking-wider group-hover/card:translate-x-1 transition-transform">
+                        Explore <ChevronRight className="h-3.5 w-3.5 ml-1 text-indigo-400" />
+                     </div>
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Mail, Lock, Compass, ArrowRight } from 'lucide-react';
+import Logo from '../layout/Logo';
 
 const AuthPage: React.FC = () => {
   const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
@@ -76,35 +78,32 @@ const AuthPage: React.FC = () => {
         className="absolute inset-0 z-0 bg-cover bg-center"
         style={{ backgroundImage: 'url("https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=2021&q=80")' }}
       >
-        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"></div>
+        <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"></div>
       </div>
 
       <div className="relative z-10 w-full max-w-md">
-        <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl animate-fade-in-up">
+        <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl animate-fade-in-up border border-white/10">
           
           {/* Header */}
-          <div className="px-8 pt-8 pb-6 text-center">
-            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-200 via-white to-indigo-200 tracking-tight mb-2">
-              NEST
-            </h1>
-            <p className="text-slate-400 text-sm font-medium tracking-wide uppercase">The Family Travel OS</p>
+          <div className="pt-10 pb-6 flex justify-center">
+            <Logo />
           </div>
 
           <div className="px-8 pb-8">
             {/* Toggle Switch */}
-            <div className="flex p-1 bg-slate-800/50 rounded-xl mb-8 relative">
+            <div className="flex p-1 bg-slate-900/60 rounded-xl mb-8 relative border border-white/5">
               <div 
                 className={`absolute inset-y-1 w-1/2 bg-indigo-600 rounded-lg shadow-lg transition-transform duration-300 ease-out ${mode === 'signup' ? 'translate-x-full' : 'translate-x-0'}`}
               ></div>
               <button
                 onClick={() => { setMode('signin'); setError(null); setMessage(null); }}
-                className={`flex-1 relative z-10 py-2 text-sm font-semibold transition-colors duration-300 ${mode === 'signin' ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors duration-300 ${mode === 'signin' ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
               >
                 Sign In
               </button>
               <button
                 onClick={() => { setMode('signup'); setError(null); setMessage(null); }}
-                className={`flex-1 relative z-10 py-2 text-sm font-semibold transition-colors duration-300 ${mode === 'signup' ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
+                className={`flex-1 relative z-10 py-2.5 text-xs font-bold uppercase tracking-wider transition-colors duration-300 ${mode === 'signup' ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
               >
                 Sign Up
               </button>
@@ -119,7 +118,7 @@ const AuthPage: React.FC = () => {
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl py-3 pl-12 pr-4 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                    className="w-full bg-slate-950/50 border border-slate-700/50 rounded-xl py-3.5 pl-12 pr-4 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                     placeholder="Email address"
                   />
                 </div>
@@ -132,7 +131,7 @@ const AuthPage: React.FC = () => {
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl py-3 pl-12 pr-4 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                      className="w-full bg-slate-950/50 border border-slate-700/50 rounded-xl py-3.5 pl-12 pr-4 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                       placeholder="Password"
                     />
                   </div>
@@ -146,7 +145,7 @@ const AuthPage: React.FC = () => {
                       required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl py-3 pl-12 pr-4 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+                      className="w-full bg-slate-950/50 border border-slate-700/50 rounded-xl py-3.5 pl-12 pr-4 text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
                       placeholder="Confirm Password"
                     />
                   </div>
@@ -170,7 +169,7 @@ const AuthPage: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-indigo-500/30 transition-all transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center group"
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-indigo-500/30 transition-all transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center group"
               >
                 {loading ? <Loader2 className="animate-spin h-5 w-5" /> : (
                   <>
@@ -208,7 +207,7 @@ const AuthPage: React.FC = () => {
                 <button
                   onClick={handleGuestLogin}
                   disabled={loading}
-                  className="w-full bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 text-slate-300 font-semibold py-3 rounded-xl transition-all flex items-center justify-center space-x-2 group"
+                  className="w-full bg-slate-900/30 hover:bg-slate-800/50 border border-slate-700 text-slate-300 font-semibold py-3.5 rounded-xl transition-all flex items-center justify-center space-x-2 group"
                 >
                   {loading ? (
                     <Loader2 className="animate-spin h-5 w-5" />

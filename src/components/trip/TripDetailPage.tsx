@@ -1,17 +1,16 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabaseClient';
-import { Trip, Day, Activity, GeneratedActivitySuggestion } from '../../types';
-import { Loader2, ArrowLeft, Wand2, PlusCircle, Calendar, MapPin, Wallet, Upload, Edit, X, MessageSquare, Image as ImageIcon } from 'lucide-react';
+import { Trip, Day, Activity } from '../../types';
+import { Loader2, ArrowLeft, Calendar, MapPin, Edit, MessageSquare, Image as ImageIcon } from 'lucide-react';
 import DayTabs from './DayTabs';
 import ActivityList from './ActivityList';
 import ActivityForm from './ActivityForm';
-import CommentsPanel from './CommentsPanel';
-import CollaboratorsPanel from './CollaboratorsPanel';
+import ActivityDetailModal from './ActivityDetailModal';
 import AiAssistant from './AiAssistant';
 import MediaStudio from './MediaStudio';
-import { generateAiActivitiesForTrip } from '../../lib/aiPlanner';
+import { generateImagePro } from '../../lib/gemini';
 
 const TripDetailPage: React.FC = () => {
   const { tripId } = useParams<{ tripId: string }>();
@@ -21,26 +20,59 @@ const TripDetailPage: React.FC = () => {
   const [days, setDays] = useState<Day[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
-  
   const [loading, setLoading] = useState(true);
-  const [activeCommentActivity, setActiveCommentActivity] = useState<Activity | null>(null);
-  
-  // AI Planner State (Side Panel)
-  const [aiPlannerOpen, setAiPlannerOpen] = useState(false);
-  const [generatingAi, setGeneratingAi] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<GeneratedActivitySuggestion[]>([]);
-  const [aiError, setAiError] = useState(false);
-
-  // Main View Mode (Itinerary vs Assistant vs Studio)
+  const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
   const [viewMode, setViewMode] = useState<'itinerary' | 'assistant' | 'studio'>('itinerary');
-
-  // Edit Cover State
   const [uploadingCover, setUploadingCover] = useState(false);
+
+  // Background Image Generation Queue
+  const processingImages = useRef(new Set<string>());
+  // Track failed images so we don't retry them infinitely causing 429s
+  const failedImages = useRef(new Set<string>());
 
   useEffect(() => { if (tripId) fetchTripData(); }, [tripId]);
 
+  // Image Generation Effect
+  useEffect(() => {
+    const processImageGeneration = async () => {
+       // Find activities that have a prompt but no URL and aren't being processed AND haven't failed before
+       const pending = activities.filter(a => 
+         a.image_prompt && 
+         !a.image_url && 
+         !processingImages.current.has(a.id) &&
+         !failedImages.current.has(a.id)
+       );
+       
+       if (pending.length > 0) {
+          // Process one at a time to avoid rate limits
+          const activity = pending[0];
+          processingImages.current.add(activity.id);
+          
+          try {
+             // Using gemini-3-pro-image-preview via gemini.ts lib
+             const url = await generateImagePro(activity.image_prompt!, "16:9", "1K");
+             if (url) {
+                // Update DB
+                await supabase.from('activities').update({ image_url: url }).eq('id', activity.id);
+                // Update Local State
+                setActivities(prev => prev.map(a => a.id === activity.id ? { ...a, image_url: url } : a));
+             }
+          } catch (e) {
+             console.error("Failed to generate image for activity", activity.title);
+             // Mark as failed so we don't retry immediately
+             failedImages.current.add(activity.id);
+          } finally {
+             processingImages.current.delete(activity.id);
+          }
+       }
+    };
+
+    // Interval to process queue. 4000ms is a safe buffer for rate limits.
+    const interval = setInterval(processImageGeneration, 4000); 
+    return () => clearInterval(interval);
+  }, [activities]);
+
   const fetchTripData = async () => {
-    setLoading(true);
     try {
       if (!tripId) return;
       const { data: tripData } = await supabase.from('trips').select('*').eq('id', tripId).single();
@@ -67,79 +99,29 @@ const TripDetailPage: React.FC = () => {
     fetchTripData();
   };
 
-  // --- AI Planner Logic (Side Panel) ---
-  const handleGenerateAi = async () => {
-    if (!trip || days.length === 0) return;
-    setGeneratingAi(true);
-    setAiError(false);
-    try {
-      const suggestions = await generateAiActivitiesForTrip({ trip, days, existingActivities: activities });
-      if (suggestions.length === 0) setAiError(true);
-      else setAiSuggestions(suggestions);
-    } catch (e) { setAiError(true); } finally { setGeneratingAi(false); }
-  };
-
-  const handleAddAiSuggestion = async (suggestion: GeneratedActivitySuggestion) => {
-    if (!selectedDayId) return;
-    const { error } = await supabase.from('activities').insert([{
-      day_id: selectedDayId,
-      title: suggestion.title,
-      category: suggestion.category,
-      start_time: suggestion.approximate_start_time.length === 5 ? suggestion.approximate_start_time : null,
-      end_time: suggestion.approximate_end_time.length === 5 ? suggestion.approximate_end_time : null,
-      cost: suggestion.cost,
-      notes: suggestion.notes
-    }]);
-
-    if (!error) {
-      setAiSuggestions(prev => prev.filter(s => s !== suggestion));
-      fetchTripData();
-    }
-  };
-
-  const handleDismissAiSuggestion = (suggestion: GeneratedActivitySuggestion) => {
-    setAiSuggestions(prev => prev.filter(s => s !== suggestion));
-  };
-
   const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !trip) return;
-
     setUploadingCover(true);
     try {
        const fileExt = file.name.split('.').pop();
        const fileName = `${Math.random()}.${fileExt}`;
        const filePath = `${trip.user_id}/${fileName}`;
-       
        const { error: uploadError } = await supabase.storage.from('trip-covers').upload(filePath, file);
        if (uploadError) throw uploadError;
-
        const { data: { publicUrl } } = supabase.storage.from('trip-covers').getPublicUrl(filePath);
-       
-       const { error: updateError } = await supabase
-         .from('trips')
-         .update({ cover_image: publicUrl })
-         .eq('id', trip.id);
-
-       if (updateError) throw updateError;
+       await supabase.from('trips').update({ cover_image: publicUrl }).eq('id', trip.id);
        setTrip({ ...trip, cover_image: publicUrl });
-    } catch (err) {
-      console.error(err);
-      alert('Failed to upload cover image');
-    } finally {
-      setUploadingCover(false);
-    }
+    } catch (err) { alert('Failed to upload cover image'); } finally { setUploadingCover(false); }
   };
 
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="animate-spin text-indigo-500 h-8 w-8" /></div>;
   if (!trip) return <div>Trip not found</div>;
 
   const currentDayActivities = activities.filter(a => a.day_id === selectedDayId);
-  const totalCost = activities.reduce((sum, act) => sum + (act.cost || 0), 0);
-  const dayCost = currentDayActivities.reduce((sum, act) => sum + (act.cost || 0), 0);
 
   return (
-    <div className="max-w-7xl mx-auto pb-20">
+    <div className="max-w-7xl mx-auto pb-20 animate-fade-in">
       {/* Header */}
       <div className="mb-8">
         <button onClick={() => navigate('/app')} className="flex items-center text-slate-400 hover:text-white mb-6 transition-colors group">
@@ -147,30 +129,29 @@ const TripDetailPage: React.FC = () => {
         </button>
         
         <div 
-          className="glass-panel p-8 rounded-3xl relative overflow-hidden bg-cover bg-center group transition-all duration-700"
+          className="glass-panel p-8 md:p-12 rounded-[2rem] relative overflow-hidden bg-cover bg-center group transition-all duration-1000 shadow-2xl"
           style={{ 
             backgroundImage: trip.cover_image ? `url(${trip.cover_image})` : undefined,
             backgroundColor: trip.cover_image ? 'transparent' : 'rgba(15, 23, 42, 0.6)'
           }}
         >
-          {trip.cover_image && <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm group-hover:backdrop-blur-md transition-all"></div>}
+          {trip.cover_image && <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-slate-950/30"></div>}
           
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 relative z-10">
             <div className="flex-1">
-              <div className="flex items-center space-x-2 text-indigo-400 font-bold text-xs uppercase tracking-widest mb-2">
-                <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+              <div className="flex items-center space-x-2 text-indigo-400 font-bold text-xs uppercase tracking-widest mb-3">
+                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
                 <span>Itinerary Planner</span>
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold text-white mb-2 tracking-tight drop-shadow-lg">{trip.name}</h1>
-              <div className="flex flex-wrap items-center gap-4 text-slate-300">
-                 <div className="flex items-center"><MapPin className="h-4 w-4 mr-1.5 text-slate-400" /> {trip.destination}</div>
-                 <div className="w-1 h-1 bg-slate-500 rounded-full"></div>
-                 <div className="flex items-center"><Calendar className="h-4 w-4 mr-1.5 text-slate-400" /> {new Date(trip.start_date).toLocaleDateString()} - {new Date(trip.end_date).toLocaleDateString()}</div>
+              <h1 className="text-4xl md:text-6xl font-bold text-white mb-4 tracking-tight drop-shadow-xl">{trip.name}</h1>
+              <div className="flex flex-wrap items-center gap-6 text-slate-200 font-medium">
+                 <div className="flex items-center bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-md border border-white/10"><MapPin className="h-4 w-4 mr-2 text-indigo-300" /> {trip.destination}</div>
+                 <div className="flex items-center bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-md border border-white/10"><Calendar className="h-4 w-4 mr-2 text-indigo-300" /> {new Date(trip.start_date).toLocaleDateString()} - {new Date(trip.end_date).toLocaleDateString()}</div>
               </div>
             </div>
             
             <div className="flex flex-col items-end gap-3">
-               <label className="cursor-pointer bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider backdrop-blur-md border border-white/10 flex items-center transition-colors">
+               <label className="cursor-pointer bg-slate-950/50 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider backdrop-blur-md border border-white/10 flex items-center transition-all shadow-lg hover:shadow-xl hover:scale-105">
                   {uploadingCover ? <Loader2 className="animate-spin h-3 w-3 mr-2" /> : <Edit className="h-3 w-3 mr-2" />}
                   {uploadingCover ? 'Uploading...' : 'Change Cover'}
                   <input type="file" className="hidden" accept="image/*" onChange={handleCoverUpload} disabled={uploadingCover} />
@@ -180,131 +161,60 @@ const TripDetailPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Feature Tabs */}
-      <div className="flex justify-center mb-8">
-         <div className="glass-panel p-1 rounded-2xl flex space-x-1">
-            <button 
-              onClick={() => setViewMode('itinerary')}
-              className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center ${viewMode === 'itinerary' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
-            >
-              <Calendar className="h-4 w-4 mr-2" /> Itinerary
-            </button>
-            <button 
-              onClick={() => setViewMode('assistant')}
-              className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center ${viewMode === 'assistant' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
-            >
-              <MessageSquare className="h-4 w-4 mr-2" /> AI Assistant
-            </button>
-            <button 
-              onClick={() => setViewMode('studio')}
-              className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center ${viewMode === 'studio' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
-            >
-              <ImageIcon className="h-4 w-4 mr-2" /> Media Studio
-            </button>
+      {/* Tabs */}
+      <div className="flex justify-center mb-10 sticky top-4 z-40">
+         <div className="glass-panel p-1.5 rounded-2xl flex space-x-1 shadow-2xl border border-white/10 bg-slate-900/80 backdrop-blur-xl">
+            {[
+              { id: 'itinerary', label: 'Itinerary', icon: Calendar },
+              { id: 'assistant', label: 'AI Assistant', icon: MessageSquare },
+              { id: 'studio', label: 'Media Studio', icon: ImageIcon }
+            ].map(tab => (
+              <button 
+                key={tab.id}
+                onClick={() => setViewMode(tab.id as any)}
+                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center ${viewMode === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+              >
+                <tab.icon className="h-4 w-4 mr-2" /> {tab.label}
+              </button>
+            ))}
          </div>
       </div>
 
-      {/* VIEW CONTENT */}
-      {viewMode === 'itinerary' && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in-up">
-          {/* Main Content: Days & Activities */}
-          <div className="lg:col-span-8 space-y-6">
-            <DayTabs days={days} selectedDayId={selectedDayId} onSelectDay={handleDaySelect} />
-            
-            <div className="glass-panel rounded-3xl p-6 min-h-[500px]">
-               <div className="flex justify-between items-center mb-6 pb-4 border-b border-white/5">
-                  <h3 className="text-xl font-bold text-white">Day Schedule</h3>
-                  <div className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-                     <Wallet className="h-3 w-3 inline mr-1" /> Total: ${dayCost}
-                  </div>
-               </div>
-               
-               <ActivityList activities={currentDayActivities} onDelete={handleDeleteActivity} onOpenComments={setActiveCommentActivity} />
-               
-               {selectedDayId && (
-                 <div className="mt-8 pt-8 border-t border-white/5">
-                   <ActivityForm dayId={selectedDayId} onSuccess={fetchTripData} />
-                 </div>
-               )}
-            </div>
-          </div>
-
-          {/* Sidebar: AI Planner & Collaborators */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className={`transition-all duration-300 rounded-3xl p-6 border ${aiPlannerOpen ? 'bg-indigo-950/30 border-indigo-500/30 shadow-lg shadow-indigo-900/20' : 'glass-panel border-white/5'}`}>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-indigo-100 flex items-center">
-                  <Wand2 className="h-5 w-5 mr-2 text-indigo-400" />
-                  Auto Planner
-                </h3>
-                <button 
-                  onClick={() => setAiPlannerOpen(!aiPlannerOpen)}
-                  className={`w-12 h-6 rounded-full relative transition-colors duration-300 ${aiPlannerOpen ? 'bg-indigo-600' : 'bg-slate-700'}`}
-                >
-                  <div className={`absolute top-1 left-1 bg-white w-4 h-4 rounded-full transition-transform duration-300 ${aiPlannerOpen ? 'translate-x-6' : ''}`} />
-                </button>
-              </div>
-
-              <div className={`transition-all duration-300 overflow-hidden ${aiPlannerOpen ? 'max-h-[800px] opacity-100' : 'max-h-20 opacity-60'}`}>
-                 <p className="text-sm text-slate-400 mb-4 leading-relaxed">
-                    Automatically generate a schedule for this trip using AI.
-                 </p>
+      {/* Content */}
+      <div className="min-h-[500px]">
+        {viewMode === 'itinerary' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in-up">
+            <div className="lg:col-span-12 space-y-8">
+              <DayTabs days={days} selectedDayId={selectedDayId} onSelectDay={handleDaySelect} />
+              
+              <div className="space-y-6">
+                 {/* Activity List */}
+                 <ActivityList 
+                   activities={currentDayActivities} 
+                   onDelete={handleDeleteActivity} 
+                   onOpenComments={setActiveActivity} 
+                 />
                  
-                 {aiPlannerOpen && (
-                   <>
-                     {aiSuggestions.length === 0 ? (
-                        <button onClick={handleGenerateAi} disabled={generatingAi}
-                          className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-colors flex justify-center items-center shadow-lg shadow-indigo-500/20">
-                          {generatingAi ? <Loader2 className="animate-spin h-5 w-5" /> : "Generate Suggestions"}
-                        </button>
-                     ) : (
-                        <div className="space-y-3 mt-2 pr-1 max-h-[500px] overflow-y-auto custom-scrollbar">
-                          {aiSuggestions.map((s, idx) => (
-                            <div key={idx} className="bg-slate-900/80 border border-white/10 p-4 rounded-xl hover:border-indigo-500/30 transition-colors group">
-                              <div className="flex justify-between items-start mb-1">
-                                <h5 className="font-bold text-slate-200 text-sm leading-tight">{s.title}</h5>
-                                <span className="text-[10px] uppercase bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">{s.category}</span>
-                              </div>
-                              <p className="text-xs text-slate-500 mb-3 line-clamp-2">{s.notes}</p>
-                              <div className="flex justify-between items-center mt-3">
-                                <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/10">${s.cost}</span>
-                                <div className="flex items-center space-x-1">
-                                  <button onClick={() => handleDismissAiSuggestion(s)} className="text-slate-500 hover:text-white p-1 rounded"><X className="h-4 w-4"/></button>
-                                  <button onClick={() => handleAddAiSuggestion(s)}
-                                      className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg flex items-center hover:bg-indigo-500 transition-colors ml-1">
-                                      <PlusCircle className="h-3 w-3 mr-1" /> Add
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                          <button onClick={() => setAiSuggestions([])} className="text-xs text-slate-500 hover:text-slate-300 w-full text-center py-2">Clear results</button>
-                        </div>
-                     )}
-                     {aiError && <p className="text-xs text-amber-400 mt-3 p-3 bg-amber-900/20 border border-amber-500/20 rounded-lg">AI unavailable. Try again later.</p>}
-                   </>
+                 {/* Add Button */}
+                 {selectedDayId && (
+                   <div className="mt-8 pt-8 border-t border-white/5">
+                     <ActivityForm dayId={selectedDayId} onSuccess={fetchTripData} />
+                   </div>
                  )}
               </div>
             </div>
-            
-            <CollaboratorsPanel tripId={trip.id} />
           </div>
-        </div>
-      )}
+        )}
 
-      {viewMode === 'assistant' && (
-         <div className="animate-fade-in-up">
-            <AiAssistant />
-         </div>
-      )}
+        {viewMode === 'assistant' && <div className="animate-fade-in-up"><AiAssistant /></div>}
+        {viewMode === 'studio' && <div className="animate-fade-in-up"><MediaStudio /></div>}
+      </div>
 
-      {viewMode === 'studio' && (
-         <div className="animate-fade-in-up">
-            <MediaStudio />
-         </div>
-      )}
-
-      <CommentsPanel activity={activeCommentActivity} onClose={() => setActiveCommentActivity(null)} />
+      <ActivityDetailModal 
+        activity={activeActivity} 
+        trip={trip}
+        onClose={() => setActiveActivity(null)} 
+      />
     </div>
   );
 };

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Loader2, Plus, X } from 'lucide-react';
 import { supabase } from '../../lib/supabaseClient';
@@ -15,6 +16,7 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayId, onSuccess }) => {
   const [endTime, setEndTime] = useState('');
   const [cost, setCost] = useState('');
   const [notes, setNotes] = useState('');
+  const [logistics, setLogistics] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -26,10 +28,11 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayId, onSuccess }) => {
       const { error } = await supabase.from('activities').insert([{
         day_id: dayId, title, category,
         start_time: startTime || null, end_time: endTime || null,
-        cost: cost ? parseFloat(cost) : 0, notes
+        cost: cost ? parseFloat(cost) : 0, notes,
+        logistics: logistics || null
       }]);
       if (error) throw error;
-      setTitle(''); setCategory('sightseeing'); setStartTime(''); setEndTime(''); setCost(''); setNotes('');
+      setTitle(''); setCategory('sightseeing'); setStartTime(''); setEndTime(''); setCost(''); setNotes(''); setLogistics('');
       setIsOpen(false);
       onSuccess();
     } catch (err) { console.error(err); alert("Failed to add activity"); } finally { setLoading(false); }
@@ -75,8 +78,17 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayId, onSuccess }) => {
 
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cost</label>
-            <input type="number" min="0" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00"
-              className="w-full bg-slate-950/50 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none placeholder-slate-600" />
+            <div className="relative">
+              <span className="absolute left-4 top-3.5 text-slate-400 font-semibold">₹</span>
+              <input 
+                type="number" 
+                min="0" 
+                value={cost} 
+                onChange={e => setCost(e.target.value)} 
+                placeholder="0.00"
+                className="w-full bg-slate-950/50 border border-slate-700 rounded-xl py-3 pl-8 pr-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none placeholder-slate-600" 
+              />
+            </div>
           </div>
 
           <div>
@@ -89,6 +101,12 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ dayId, onSuccess }) => {
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ends At</label>
             <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
               className="w-full bg-slate-950/50 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none [color-scheme:dark]" />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Logistics / Check-in Info</label>
+            <input value={logistics} onChange={e => setLogistics(e.target.value)} placeholder="e.g. Check-in at 2 PM, Gate 4B"
+              className="w-full bg-slate-950/50 border border-slate-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none placeholder-slate-600" />
           </div>
 
           <div className="md:col-span-2">

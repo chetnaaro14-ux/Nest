@@ -33,6 +33,9 @@ export interface Activity {
   end_time: string | null;   // Format HH:mm:ss
   cost: number;
   notes: string | null;
+  logistics?: string | null; // e.g. "Check-in: 2 PM", "Boarding: 10:30 AM"
+  image_url?: string | null;
+  image_prompt?: string | null;
   created_at: string;
 }
 
@@ -67,12 +70,14 @@ export interface GeneratedActivitySuggestion {
   approximate_end_time: string;
   cost: number;
   notes: string;
+  logistics: string;
+  image_prompt: string;
+  image_url?: string; // Populated after generation
 }
 
 // Global interface for Veo API Key Selection
 declare global {
   // Augment the existing AIStudio interface. 
-  // We assume Window.aistudio is already defined as AIStudio.
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
