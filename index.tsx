@@ -10,7 +10,8 @@ const viteEnv = (import.meta as any).env || {};
 
 (window as any).process = {
   env: {
-    API_KEY: viteEnv.VITE_API_KEY || 'AIzaSyBLy35gjyBkaPQANcJ_iiziC2HAVsGisn4'
+    // API Key must be provided via environment variables (VITE_API_KEY)
+    API_KEY: viteEnv.VITE_API_KEY || ''
   }
 };
 
