@@ -2,15 +2,101 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { Trip, GeneratedActivitySuggestion } from '../../types';
-import { Plus, Calendar, MapPin, Loader2, ArrowRight, Upload, Sparkles, Wand2, Compass, Layout } from 'lucide-react';
+import { Plus, Calendar, MapPin, Loader2, ArrowRight, Upload, Sparkles, Wand2, Compass, Layout, Database, Copy, Check, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { generateAiActivitiesForTrip } from '../../lib/aiPlanner';
 import { generateImagePro } from '../../lib/gemini';
+
+const REQUIRED_SCHEMA_SQL = `
+-- COPY THIS INTO SUPABASE SQL EDITOR AND RUN
+
+-- 1. Create Tables
+create table if not exists public.profiles (
+  id uuid references auth.users not null primary key,
+  email text,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.trips (
+  id uuid default gen_random_uuid() primary key,
+  user_id uuid references public.profiles(id),
+  name text,
+  destination text,
+  start_date date,
+  end_date date,
+  status text default 'planning',
+  cover_image text,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.days (
+  id uuid default gen_random_uuid() primary key,
+  trip_id uuid references public.trips(id) on delete cascade,
+  date date,
+  index integer
+);
+
+create table if not exists public.activities (
+  id uuid default gen_random_uuid() primary key,
+  day_id uuid references public.days(id) on delete cascade,
+  title text,
+  category text,
+  start_time time,
+  end_time time,
+  cost numeric,
+  notes text,
+  logistics text,
+  image_url text,
+  image_prompt text,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.trip_members (
+  id uuid default gen_random_uuid() primary key,
+  trip_id uuid references public.trips(id) on delete cascade,
+  user_id uuid references public.profiles(id),
+  role text default 'editor',
+  created_at timestamptz default now()
+);
+
+create table if not exists public.activity_comments (
+  id uuid default gen_random_uuid() primary key,
+  activity_id uuid references public.activities(id) on delete cascade,
+  user_id uuid references public.profiles(id),
+  comment text,
+  created_at timestamptz default now()
+);
+
+-- 2. Disable RLS for Development (Fixes Permission Errors)
+alter table public.profiles enable row level security;
+create policy "Allow all profiles" on public.profiles for all using (true);
+
+alter table public.trips enable row level security;
+create policy "Allow all trips" on public.trips for all using (true);
+
+alter table public.days enable row level security;
+create policy "Allow all days" on public.days for all using (true);
+
+alter table public.activities enable row level security;
+create policy "Allow all activities" on public.activities for all using (true);
+
+alter table public.trip_members enable row level security;
+create policy "Allow all members" on public.trip_members for all using (true);
+
+alter table public.activity_comments enable row level security;
+create policy "Allow all comments" on public.activity_comments for all using (true);
+
+-- 3. Storage Setup
+insert into storage.buckets (id, name, public) values ('trip-covers', 'trip-covers', true) on conflict do nothing;
+create policy "Public Access Covers" on storage.objects for select using ( bucket_id = 'trip-covers' );
+create policy "Auth Upload Covers" on storage.objects for insert with check ( bucket_id = 'trip-covers' and auth.role() = 'authenticated' );
+`;
 
 const DashboardPage: React.FC = () => {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
+  const [dbSetupNeeded, setDbSetupNeeded] = useState(false);
   
   // Wizard State
   const [mode, setMode] = useState<'manual' | 'ai'>('ai');
@@ -24,6 +110,7 @@ const DashboardPage: React.FC = () => {
   // Processing State
   const [processing, setProcessing] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const navigate = useNavigate();
 
@@ -32,13 +119,18 @@ const DashboardPage: React.FC = () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
-    // Safety check: if trip_members table doesn't exist yet, this might fail silently or throw.
-    // We try/catch to be safe.
     try {
       const { data: memberData, error } = await supabase.from('trip_members').select('trip_id').eq('user_id', user.id);
       
       if (error) {
-        console.warn("Could not fetch trips. DB might be empty.", error);
+        console.error("Fetch trips error:", error);
+        // Detect missing table error
+        if (
+          error.message.includes('relation "public.trip_members" does not exist') || 
+          error.code === '42P01'
+        ) {
+          setDbSetupNeeded(true);
+        }
         setTrips([]);
         setLoading(false);
         return;
@@ -61,6 +153,12 @@ const DashboardPage: React.FC = () => {
 
   useEffect(() => { fetchTrips(); }, []);
 
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(REQUIRED_SCHEMA_SQL);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setProcessing(true);
@@ -70,6 +168,17 @@ const DashboardPage: React.FC = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("You must be signed in to create a trip.");
 
+      // CRITICAL: Ensure profile exists before creating trip to avoid Foreign Key error
+      // This heals accounts created before the DB tables existed.
+      const { error: profileCheckError } = await supabase.from('profiles').upsert({ 
+          id: user.id, 
+          email: user.email 
+      }, { onConflict: 'id' });
+      
+      if (profileCheckError) {
+          console.warn("Auto-healing profile failed, attempting to proceed:", profileCheckError);
+      }
+
       // 1. Handle Cover Image
       let coverImageUrl = null;
       if (coverFile) {
@@ -78,7 +187,6 @@ const DashboardPage: React.FC = () => {
          const fileName = `${Math.random()}.${fileExt}`;
          const filePath = `${user.id}/${fileName}`;
          
-         // Check if bucket exists implicitly by trying upload
          const { error: uploadError } = await supabase.storage.from('trip-covers').upload(filePath, coverFile);
          if (uploadError) {
            console.warn("Upload failed (Bucket might not exist):", uploadError.message);
@@ -87,7 +195,6 @@ const DashboardPage: React.FC = () => {
            coverImageUrl = publicUrl;
          }
       } else if (mode === 'ai') {
-         // Try to generate a cover if none provided
          setStatusMsg('Generating trip cover...');
          try {
            coverImageUrl = await generateImagePro(`A cinematic travel shot of ${newDestination}, 4k, aesthetic`, "16:9", "1K");
@@ -99,7 +206,6 @@ const DashboardPage: React.FC = () => {
       let endDate = newEndDate;
       
       if (mode === 'ai' && !startDate) {
-         // Default to next week if not set
          const d = new Date();
          d.setDate(d.getDate() + 7);
          startDate = d.toISOString().split('T')[0];
@@ -120,20 +226,33 @@ const DashboardPage: React.FC = () => {
         cover_image: coverImageUrl
       }]).select().single();
 
-      if (tripError) throw new Error(`DB Error (Trips): ${tripError.message}`);
+      if (tripError) {
+        console.error("Trip Insert Error:", tripError);
+        // Explicitly check for missing table error codes
+        if (
+            tripError.message.includes('relation "public.trips" does not exist') || 
+            tripError.code === '42P01' ||
+            tripError.message.includes('does not exist')
+        ) {
+          setDbSetupNeeded(true);
+          throw new Error("Missing Database Tables. Please click 'Troubleshoot Database' and run the SQL.");
+        }
+        throw new Error(`Database Error: ${tripError.message}`);
+      }
       
       const trip = tripData as Trip;
       
       // Insert Member
       const { error: memberError } = await supabase.from('trip_members').insert([{ trip_id: trip.id, user_id: user.id, role: 'owner' }]);
-      if (memberError) throw new Error(`DB Error (Members): ${memberError.message}`);
+      if (memberError) {
+         console.error("Member Insert Error:", memberError);
+      }
 
       // 4. Generate Days
       const start = new Date(startDate);
       const end = new Date(endDate);
       const daysToInsert = [];
       let currentIndex = 0;
-      // Safety cap of 30 days to prevent infinite loops on bad dates
       const MAX_DAYS = 30;
       let dayCount = 0;
 
@@ -149,7 +268,7 @@ const DashboardPage: React.FC = () => {
       
       if (daysToInsert.length > 0) {
         const { error: daysError } = await supabase.from('days').insert(daysToInsert);
-        if (daysError) throw new Error(`DB Error (Days): ${daysError.message}`);
+        if (daysError) console.error("Days Insert Error:", daysError);
       }
 
       // 5. AI Itinerary Generation
@@ -161,7 +280,6 @@ const DashboardPage: React.FC = () => {
            existingActivities: [] 
         });
 
-        // Insert activities with prompts (Image generation happens on detail page to save time here)
         if (suggestions.length > 0) {
             setStatusMsg(`Adding ${suggestions.length} activities...`);
             const activitiesToInsert = suggestions.map((s, idx) => ({
@@ -177,7 +295,7 @@ const DashboardPage: React.FC = () => {
                 image_url: null 
             }));
             const { error: actError } = await supabase.from('activities').insert(activitiesToInsert);
-            if (actError) throw new Error(`DB Error (Activities): ${actError.message}`);
+            if (actError) console.error("Activity Insert Error:", actError);
         }
       }
 
@@ -185,14 +303,72 @@ const DashboardPage: React.FC = () => {
       navigate(`/app/trips/${trip.id}`);
     } catch (err: any) {
       console.error(err);
-      alert(`Failed to create trip: ${err.message || err}`);
+      if (err.message && (err.message.includes('relation') || err.message.includes('does not exist'))) {
+        setDbSetupNeeded(true);
+      } else {
+        alert(`Failed to create trip: ${err.message || err}`);
+      }
     } finally {
       setProcessing(false);
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto pb-12 animate-fade-in">
+    <div className="max-w-7xl mx-auto pb-12 animate-fade-in relative">
+      
+      {/* DB Setup Warning/Modal */}
+      {dbSetupNeeded && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/95 backdrop-blur-md" />
+          <div className="glass-panel w-full max-w-3xl rounded-3xl relative z-10 animate-fade-in-up border border-red-500/30 overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="p-6 bg-red-500/10 border-b border-red-500/20 flex items-center">
+               <Database className="h-6 w-6 text-red-400 mr-3" />
+               <h2 className="text-xl font-bold text-red-100">Action Required: Database Setup</h2>
+            </div>
+            <div className="p-8 overflow-y-auto">
+              <p className="text-slate-300 mb-4 leading-relaxed">
+                The app cannot save trips because the <strong>Supabase database tables are missing</strong>. 
+                This is normal for a new project.
+              </p>
+              <ol className="list-decimal pl-5 text-slate-300 space-y-2 mb-6">
+                <li>Click <strong>Copy SQL</strong> below.</li>
+                <li>Go to your <a href="https://supabase.com/dashboard" target="_blank" className="text-indigo-400 hover:underline">Supabase Dashboard</a>.</li>
+                <li>Open the <strong>SQL Editor</strong> tab on the left.</li>
+                <li>Paste the code and click <strong>Run</strong>.</li>
+              </ol>
+              
+              <div className="relative bg-slate-950 border border-slate-800 rounded-xl p-4 mb-6">
+                <button 
+                  onClick={handleCopySql}
+                  className="absolute top-4 right-4 bg-slate-800 hover:bg-slate-700 text-white p-2 rounded-lg transition-colors flex items-center text-xs font-bold"
+                >
+                  {copied ? <Check className="h-4 w-4 mr-2 text-emerald-400" /> : <Copy className="h-4 w-4 mr-2" />}
+                  {copied ? 'Copied' : 'Copy SQL'}
+                </button>
+                <pre className="text-xs text-indigo-200 font-mono overflow-x-auto whitespace-pre-wrap max-h-[300px] p-2">
+                  {REQUIRED_SCHEMA_SQL}
+                </pre>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                 <button 
+                  onClick={() => setDbSetupNeeded(false)}
+                  className="px-4 py-3 text-slate-400 hover:text-white"
+                >
+                  Close
+                </button>
+                <button 
+                  onClick={() => { setDbSetupNeeded(false); window.location.reload(); }}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-xl font-bold flex items-center shadow-lg transition-all"
+                >
+                  I've run the SQL, Reload App
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Hero Header */}
       <header className="mb-12 pt-8">
          <div className="flex flex-col md:flex-row justify-between items-end gap-6">
@@ -204,13 +380,23 @@ const DashboardPage: React.FC = () => {
               <h1 className="text-4xl md:text-5xl font-bold text-white tracking-tight">Your Journeys</h1>
             </div>
             
-            <button 
-              onClick={() => { setShowWizard(true); setMode('ai'); }}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-indigo-500/30 transition-all hover:-translate-y-1 flex items-center space-x-2 border border-white/10 group"
-            >
-              <Plus className="h-5 w-5 group-hover:rotate-90 transition-transform" />
-              <span>Create New Trip</span>
-            </button>
+            <div className="flex gap-3">
+               <button 
+                  onClick={() => setDbSetupNeeded(true)}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-4 rounded-2xl font-bold transition-all flex items-center space-x-2 border border-white/5"
+                  title="Troubleshoot Database"
+                >
+                  <Database className="h-5 w-5" />
+                  <span className="hidden md:inline">Troubleshoot DB</span>
+                </button>
+                <button 
+                  onClick={() => { setShowWizard(true); setMode('ai'); }}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-4 rounded-2xl font-bold shadow-lg shadow-indigo-500/30 transition-all hover:-translate-y-1 flex items-center space-x-2 border border-white/10 group"
+                >
+                  <Plus className="h-5 w-5 group-hover:rotate-90 transition-transform" />
+                  <span>Create New Trip</span>
+                </button>
+            </div>
          </div>
       </header>
 
@@ -264,7 +450,7 @@ const DashboardPage: React.FC = () => {
                     : 'linear-gradient(to bottom right, #1e1b4b, #312e81)' 
                 }}
               >
-                 <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent"></div>
+                 <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-950/40 to-transparent"></div>
                  
                  <div className="absolute top-5 right-5 z-10">
                     <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest backdrop-blur-md border border-white/10 shadow-lg ${

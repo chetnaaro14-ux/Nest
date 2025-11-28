@@ -33,19 +33,22 @@ const AuthPage: React.FC = () => {
         if (signUpError) throw signUpError;
 
         if (data.user) {
-          // Attempt to insert profile, but if it fails (already exists), just ignore it.
-          const { error: profileError } = await supabase.from('profiles').insert([{ id: data.user.id, email: data.user.email }]);
-          if (profileError && !profileError.message.includes('duplicate key')) {
-             console.warn("Profile creation warning:", profileError);
-          }
+          // Attempt to insert profile
+          const { error: profileError } = await supabase.from('profiles').upsert([{ id: data.user.id, email: data.user.email }], { onConflict: 'id' });
+          if (profileError) console.warn("Profile creation warning:", profileError);
           navigate('/app');
         }
       } else if (mode === 'signin') {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (signInError) throw signInError;
+        
+        // Self-heal: Ensure profile exists
+        if (data.user) {
+           await supabase.from('profiles').upsert([{ id: data.user.id, email: data.user.email }], { onConflict: 'id' });
+        }
         navigate('/app');
       } else if (mode === 'forgot') {
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
@@ -65,8 +68,13 @@ const AuthPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const { error } = await supabase.auth.signInAnonymously();
+      const { data, error } = await supabase.auth.signInAnonymously();
       if (error) throw error;
+      
+      // Upsert guest profile
+      if (data.user) {
+         await supabase.from('profiles').upsert([{ id: data.user.id, email: 'Guest User' }], { onConflict: 'id' });
+      }
       navigate('/app');
     } catch (err: any) {
       setError(err.message || "Failed to sign in as guest");

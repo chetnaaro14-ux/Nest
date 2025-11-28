@@ -40,7 +40,8 @@ export async function sendChatMessage(
   mode: 'general' | 'travel_guide' | 'fast'
 ): Promise<{ text: string; groundingMetadata?: any }> {
   
-  let model = 'gemini-3-pro-preview';
+  // DEFAULT TO STABLE FLASH MODEL TO PREVENT PERMISSION ERRORS ON 'GENERAL'
+  let model = 'gemini-2.5-flash';
   let tools: any[] = [];
   let toolConfig: any = undefined;
 
@@ -65,6 +66,9 @@ export async function sendChatMessage(
     }
   } else if (mode === 'fast') {
     model = 'gemini-2.5-flash-lite-latest';
+  } else if (mode === 'general') {
+    // Attempt Pro, but be ready to fall back if needed, or just use Flash for stability
+    model = 'gemini-3-pro-preview';
   }
 
   return retryWithBackoff(async () => {
@@ -92,8 +96,8 @@ export async function sendChatMessage(
       console.error("Chat generation failed:", error);
       
       // Fallback for General Pro model (Permission Denied)
-      if (mode === 'general' && (error.toString().includes('403') || error.toString().includes('PERMISSION_DENIED'))) {
-        console.warn("Falling back to Flash for chat...");
+      if (mode === 'general') {
+        console.warn("Falling back to Flash for chat due to error...");
         try {
           const fallbackChat = ai.chats.create({
             model: 'gemini-2.5-flash',
@@ -181,15 +185,12 @@ export async function generateImagePro(prompt: string, aspectRatio: string, size
       }
       return null;
     } catch (error: any) {
-      console.warn("Gemini Pro Image generation failed:", error);
+      // Log simple error message to avoid clutter
+      console.warn("Gemini Pro Image attempt failed. Trying fallback.");
       
-      // Fallback to Flash if permission denied OR resource exhausted (Flash is cheaper/higher quota often)
-      if (error.toString().includes('403') || error.toString().includes('PERMISSION_DENIED')) {
-        console.log("Falling back to gemini-2.5-flash-image...");
-        return generateImageFlash(prompt, aspectRatio);
-      }
-      
-      throw error;
+      // Fallback to Flash if ANY error occurs (Permission Denied, Quota, etc)
+      // This is safer for stability than checking specific error codes which might change
+      return generateImageFlash(prompt, aspectRatio);
     }
   });
 }
@@ -255,11 +256,8 @@ export async function analyzeImage(base64Image: string, prompt: string): Promise
     try {
       return await tryModel('gemini-3-pro-preview');
     } catch (error: any) {
-      console.error("Image analysis failed with Pro, retrying with Flash", error);
-      if (error.toString().includes('403') || error.toString().includes('PERMISSION_DENIED')) {
-        return await tryModel('gemini-2.5-flash');
-      }
-      throw error;
+      console.error("Image analysis failed with Pro, retrying with Flash");
+      return await tryModel('gemini-2.5-flash');
     }
   });
 }

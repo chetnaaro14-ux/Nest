@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 // ------------------------------------------------------------------
@@ -13,4 +14,4 @@ if (!supabaseUrl || !supabaseKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
-console.log("%c NEST CONNECTED TO SUPABASE ", "background: #10b981; color: #fff; padding: 4px; border-radius: 4px;");
+console.log("%c NEST CONNECTED TO SUPABASE (REAL) ", "background: #10b981; color: #fff; padding: 4px; border-radius: 4px;");

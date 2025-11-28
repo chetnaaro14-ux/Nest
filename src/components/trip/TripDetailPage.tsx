@@ -27,7 +27,7 @@ const TripDetailPage: React.FC = () => {
 
   // Background Image Generation Queue
   const processingImages = useRef(new Set<string>());
-  // Track failed images so we don't retry them infinitely causing 429s
+  // Track failed images so we don't retry them infinitely causing 429s/403s
   const failedImages = useRef(new Set<string>());
 
   useEffect(() => { if (tripId) fetchTripData(); }, [tripId]);
@@ -51,11 +51,17 @@ const TripDetailPage: React.FC = () => {
           try {
              // Using gemini-3-pro-image-preview via gemini.ts lib
              const url = await generateImagePro(activity.image_prompt!, "16:9", "1K");
+             
              if (url) {
                 // Update DB
                 await supabase.from('activities').update({ image_url: url }).eq('id', activity.id);
                 // Update Local State
                 setActivities(prev => prev.map(a => a.id === activity.id ? { ...a, image_url: url } : a));
+             } else {
+                // CRITICAL FIX: If url is null (generation failed/fallback failed), mark as failed 
+                // so we don't try again in the next interval loop.
+                console.warn(`Image generation failed for ${activity.title}, marking as failed.`);
+                failedImages.current.add(activity.id);
              }
           } catch (e) {
              console.error("Failed to generate image for activity", activity.title);
